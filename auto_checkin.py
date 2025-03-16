@@ -144,8 +144,8 @@ def configure_logger(debug: bool = False):
     
 def send_qmsg_notification(message: str, qmsg_token: str = None):
     """
-    Qmsg酱消息推送
-    API文档：https://qmsg.zendee.cn/index.html
+    Qmsg酱消息推送（增强版）
+    新增：响应状态码检查、空响应处理、JSON解析异常捕获
     """
     if not qmsg_token:
         logger.warning("未配置QMSG_TOKEN，跳过Qmsg推送")
@@ -155,15 +155,38 @@ def send_qmsg_notification(message: str, qmsg_token: str = None):
         encoded_msg = quote(message)
         url = f"https://qmsg.zendee.cn/send/{qmsg_token}?msg={encoded_msg}"
         
-        response = requests.get(url, timeout=10)
-        result = response.json()
+        response = requests.get(url, timeout=15)  # 延长超时到15秒
+        logger.debug(f"Qmsg响应状态码：{response.status_code}")  # 新增调试日志
 
+        # 优先检查空响应
+        if not response.content:
+            logger.error("Qmsg返回空响应")
+            return
+
+        # 状态码异常处理
+        if response.status_code != 200:
+            logger.error(f"Qmsg请求异常 HTTP {response.status_code}")
+            return
+
+        # 安全解析JSON
+        try:
+            result = response.json()
+        except requests.exceptions.JSONDecodeError:
+            logger.error("Qmsg响应格式异常，非JSON数据")
+            return
+
+        # 处理业务状态
         if result.get("success"):
-            logger.info("Qmsg推送成功")
+            logger.info(f"Qmsg推送成功，消息ID：{result.get('msg_id', '未知')}")
         else:
-            logger.error(f"Qmsg推送失败: {result.get('reason')}")
+            logger.error(f"Qmsg推送失败 | 错误原因：{result.get('reason', '未知')} | 完整响应：{response.text[:200]}")
+
+    except requests.exceptions.Timeout:
+        logger.error("Qmsg推送超时（15秒）")
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Qmsg网络请求异常：{str(e)}")
     except Exception as e:
-        logger.error(f"Qmsg推送异常: {str(e)}")
+        logger.error(f"Qmsg未知异常：{str(e)}", exc_info=True)
 
 def send_notifications(message: str):
     """统一推送通知"""
