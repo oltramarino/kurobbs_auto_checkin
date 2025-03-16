@@ -33,6 +33,7 @@ jobs:
         continue-on-error: true
         env:
           TOKEN: ${{ secrets.TOKEN }}
+          QMSG_TOKEN: ${{ secrets.QMSG_TOKEN}}
           BARK_DEVICE_KEY: ${{ secrets.BARK_DEVICE_KEY }}
           BARK_SERVER_URL: ${{ secrets.BARK_SERVER_URL }}
         run: |
