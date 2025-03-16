@@ -7,6 +7,9 @@ import requests
 from loguru import logger
 from pydantic import BaseModel, Field
 
+import logging
+from urllib.parse import quote
+
 from ext_bark import send_bark_notification
 
 
@@ -138,6 +141,37 @@ def configure_logger(debug: bool = False):
     logger.remove()  # Remove default logger configuration
     log_level = "DEBUG" if debug else "INFO"
     logger.add(sys.stdout, level=log_level)
+    
+def send_qmsg_notification(message: str, qmsg_token: str = None):
+    """
+    Qmsg酱消息推送
+    API文档：https://qmsg.zendee.cn/index.html
+    """
+    if not qmsg_token:
+        logger.warning("未配置QMSG_TOKEN，跳过Qmsg推送")
+        return
+
+    try:
+        encoded_msg = quote(message)
+        url = f"https://qmsg.zendee.cn/send/{qmsg_token}?msg={encoded_msg}"
+        
+        response = requests.get(url, timeout=10)
+        result = response.json()
+
+        if result.get("success"):
+            logger.info("Qmsg推送成功")
+        else:
+            logger.error(f"Qmsg推送失败: {result.get('reason')}")
+    except Exception as e:
+        logger.error(f"Qmsg推送异常: {str(e)}")
+
+def send_notifications(message: str):
+    """统一推送通知"""
+    send_bark_notification(message)
+    
+    # 从环境变量获取QMSG_TOKEN，仅在配置时推送
+    qmsg_token = os.getenv("QMSG_TOKEN")
+    send_qmsg_notification(message, qmsg_token)
 
 
 def main():
@@ -150,10 +184,10 @@ def main():
         kurobbs = KurobbsClient(token)
         kurobbs.start()
         if kurobbs.msg:
-            send_bark_notification(kurobbs.msg)
+            send_notifications(kurobbs.msg)  # 成功时双通道推送
     except KurobbsClientException as e:
         logger.error(str(e), exc_info=False)
-        send_bark_notification("签到任务失败!")
+        send_bark_notification("签到任务失败!")  # 失败时仅Bark推送
         sys.exit(1)
     except Exception as e:
         logger.error(f"An unexpected error occurred: {e}")
